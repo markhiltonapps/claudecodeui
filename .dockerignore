@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-server
+dist-server.next
+dist-server.old
+release
+.desktop-build
+.git
+.github
+electron/node_modules
+*.log
+.env
+.env.*
+!.env.example
