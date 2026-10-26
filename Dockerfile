@@ -25,7 +25,13 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY scripts ./scripts
-RUN npm ci --include=dev --no-audit --no-fund
+# Install with lifecycle scripts off: @vscode/ripgrep's postinstall downloads
+# a binary through the GitHub API, which rate-limits shared build hosts. The
+# native modules are rebuilt explicitly and ripgrep points at the apt binary.
+RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund \
+    && npm rebuild node-pty better-sqlite3 bcrypt --no-audit --no-fund \
+    && mkdir -p node_modules/@vscode/ripgrep/bin \
+    && ln -sf "$(command -v rg)" node_modules/@vscode/ripgrep/bin/rg
 
 COPY . .
 RUN npm run build && npm prune --omit=dev --no-audit --no-fund
