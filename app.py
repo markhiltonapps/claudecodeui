@@ -11,7 +11,9 @@ Run:
 
 from __future__ import annotations
 
+import hmac
 import json
+import os
 import re
 from datetime import datetime
 
@@ -342,16 +344,52 @@ def slugify(value: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def get_server_api_key() -> str:
+    """Key configured on the server (env var or Streamlit secrets), if any."""
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if key:
+        return key
+    try:
+        return str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+    except Exception:  # noqa: BLE001 - no secrets file is a normal case
+        return ""
+
+
+def require_access_password() -> None:
+    """Optional gate: if APP_PASSWORD is set, block the app until it is entered.
+
+    Recommended whenever a server-side OpenAI key is configured, so strangers
+    with the public URL cannot spend your credits.
+    """
+    expected = os.environ.get("APP_PASSWORD", "").strip()
+    if not expected or st.session_state.get("authenticated"):
+        return
+    st.title("AI Voice Agent Prompt Architect")
+    entered = st.text_input("Access password", type="password", key="access_password")
+    if entered:
+        if hmac.compare_digest(entered.encode(), expected.encode()):
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    st.stop()
+
+
 def render_sidebar() -> str:
+    server_key = get_server_api_key()
     with st.sidebar:
         st.header("Settings")
-        api_key = st.text_input(
-            "OpenAI API Key",
-            type="password",
-            placeholder="sk-...",
-            help="Used only for this session. It is never stored or logged.",
-            key="api_key",
-        )
+        if server_key:
+            st.success("Using the server's OpenAI key.")
+            api_key = server_key
+        else:
+            api_key = st.text_input(
+                "OpenAI API Key",
+                type="password",
+                placeholder="sk-...",
+                help="Used only for this session. It is never stored or logged.",
+                key="api_key",
+            )
         st.caption(f"Model: `{MODEL_NAME}` · Temperature: `{TEMPERATURE}`")
         st.divider()
         st.markdown(
@@ -473,7 +511,7 @@ def render_intake_form() -> dict:
 def handle_generate(api_key: str, intake: dict, uploaded, channel: str) -> None:
     """Validate inputs, call the LLM, and persist the result in session state."""
     if not api_key:
-        st.error("Please enter your OpenAI API key in the sidebar.")
+        st.error("No OpenAI API key found. Enter one in the sidebar or set OPENAI_API_KEY on the server.")
         return
     if not intake["business_name"]:
         st.error("Business name is required (tab 1 · Business).")
@@ -589,6 +627,7 @@ def main() -> None:
         layout="wide",
     )
     init_state()
+    require_access_password()
 
     api_key = render_sidebar()
 
